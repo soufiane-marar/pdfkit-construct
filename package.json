@@ -1,6 +1,6 @@
 {
   "name": "pdfkit-construct",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "PdfKit class that helps creating and styling tables",
   "main": "pdfkit-construct.js",
   "scripts": {
