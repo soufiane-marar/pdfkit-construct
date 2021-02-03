@@ -1,5 +1,5 @@
 {
-  "name": "@soufiane-marar/pdfkit-construct",
+  "name": "pdfkit-construct",
   "version": "1.0.0",
   "description": "PdfKit class that helps creating and styling tables",
   "main": "pdfkit-construct.js",
