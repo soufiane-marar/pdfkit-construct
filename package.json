@@ -1,0 +1,24 @@
+{
+  "name": "@soufiane-marar/pdfkit-construct",
+  "version": "1.0.0",
+  "description": "PdfKit class that helps creating and styling tables",
+  "main": "pdfkit-construct.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/soufiane-marar/pdfkit-construct.git"
+  },
+  "keywords": [
+    "pdfkit",
+    "table",
+    "pdfkit-table"
+  ],
+  "author": "Soufiane Marar",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/soufiane-marar/pdfkit-construct/issues"
+  },
+  "homepage": "https://github.com/soufiane-marar/pdfkit-construct#readme"
+}
