@@ -13,12 +13,13 @@ class PdfkitConstruct extends PDFDocument {
 
     tables = [];
 
-    tableOptions = {
+    #tableOptions = {
+        width: "auto", // auto | fill_body
         marginLeft: 0,
         marginRight: 0,
         marginTop: 0,
         marginBottom: 5,
-        border: {size: .1, color: '#000'},
+        border: {size: .1, color: '#cdcdcd'},
         striped: false,
         stripedColors: ['#fff', '#f0ecd5'],
 
@@ -58,6 +59,8 @@ class PdfkitConstruct extends PDFDocument {
     constructor(options) {
         super(options);
 
+        this.tables = [];
+
         this.#margin = this.options.margin ? {
             top: this.options.margin,
             left: this.options.margin,
@@ -65,19 +68,19 @@ class PdfkitConstruct extends PDFDocument {
             bottom: this.options.margin
         } : this.#margin;
 
-        this.#margin = this.options.margins ? this.options.margins : this.#margin;
+        this.#margin = this.options.margins || this.#margin;
 
-        this.#width = this.page.width - (this.#margin.left + this.#margin.right);
-        this.#height = this.page.height - (this.#margin.top + this.#margin.bottom);
+        this.#width = this.page.width - this.#margin.left - this.#margin.right;
+        this.#height = this.page.height - this.#margin.top - this.#margin.bottom;
         this.#bodyheight = this.#height;
     }
 
     setDocumentHeader(options, renderCallback) {
 
-        if (!options)
-            throw new Error("Header options are not set !");
-        if (!renderCallback)
-            throw new Error("Header rendering callback not set !");
+
+        if (!options) throw new Error("Header options are not set !");
+
+        if (!renderCallback) throw new Error("Header rendering callback not set !");
 
         if (options) {
             for (let prop in options) {
@@ -109,10 +112,8 @@ class PdfkitConstruct extends PDFDocument {
 
     setDocumentFooter(options, renderCallback) {
 
-        if (!options)
-            throw new Error("Footer options are not set !");
-        if (!renderCallback)
-            throw new Error("Footer rendering callback not set !");
+        if (!options) throw new Error("Footer options are not set !");
+        if (!renderCallback) throw new Error("Footer rendering callback not set !");
 
         if (options) {
             for (let prop in options) {
@@ -125,8 +126,7 @@ class PdfkitConstruct extends PDFDocument {
         } else if (typeof this.footer.options.height == "string") {
             let percentageHeight = Number(this.footer.options.height.replace("%", ""));
 
-            if (isNaN(percentageHeight))
-                throw new Error("Invalid Footer height percentage !");
+            if (isNaN(percentageHeight)) throw new Error("Invalid footer height percentage !");
 
             this.footer.options.heightNumber = (percentageHeight / 100) * this.page.height;
         } else
@@ -144,98 +144,139 @@ class PdfkitConstruct extends PDFDocument {
     }
 
     addPageDoc() {
+
+        // add page with same options
         this.addPage(this.options);
 
-        if (this.header.isVisible) {
-            this.header.render();
-        }
+        // render header if set
+        this.header.isVisible && this.header.render();
 
-        if (this.footer.isVisible) {
-            this.footer.render();
-        }
+        // render footer if set
+        this.footer.isVisible && this.footer.render();
     }
 
-
-    // column : key | label
-    // row : object (property name is the column key)
     addTable(columns, rows, options = null) {
 
-        if (!columns || columns.length === 0)
-            throw new Error("Columns are not set !");
-        if (!rows || rows.length === 0)
-            throw new Error("rows are not set !");
+
+        if (!columns || columns.length === 0) throw new Error("Columns are not set !");
+
+        if (this.#hasDuplicatedKeys(columns)) throw new Error("Column key should be unique.");
+
+        if (!rows || rows.length === 0) throw new Error("rows are not set !");
 
         if (options) {
-            for (let prop in this.tableOptions) {
+            for (let prop in this.#tableOptions) {
                 if (!options.hasOwnProperty(prop)) {
-                    options[prop] = this.tableOptions[prop];
+                    options[prop] = this.#tableOptions[prop];
                 }
             }
         } else {
-            options = this.tableOptions;
+            options = this.#tableOptions;
         }
 
-        this.tables.push(this.#initTable({columns: columns, rows: rows, options: options}));
+        let table = {columns: [], rows: [], options: {}};
+        table.columns = columns;
+        table.rows = rows;
+        table.options = options;
+
+        this.tables.push(this.#initTable(table));
     }
+
+    #hasDuplicatedKeys = (columns) => {
+
+        let temp = columns.map(item => item.key);
+        return temp.some((item, idx) => temp.indexOf(item) !== idx);
+    };
 
     #initTable = (table) => {
 
         for (let i = 0; i < table.rows.length; i++) {
 
-            let maxRowheight = 10 + (table.options.cellsPadding * 2);
+            let maxRowheight = 10;
             let row = table.rows[i];
             for (let j = 0; j < table.columns.length; j++) {
                 let column = table.columns[j];
 
-                for (const prop in row) {
-                    if (prop === column.key) {
 
-                        this.font(table.options.cellsFont, table.options.cellsFontSize);
+                if (row.hasOwnProperty(column.key)) {
+                    this.font(table.options.cellsFont, table.options.cellsFontSize);
 
-                        let width = table.options.cellsMaxWidth + (table.options.cellsPadding * 2);
+                    let width = table.options.cellsMaxWidth + (table.options.cellsPadding * 2);
 
-                        let rowheight = maxRowheight;
+                    width = (this.widthOfString(row[column.key].toString()) < table.options.cellsMaxWidth) ?
+                        this.widthOfString(row[column.key].toString()) + (table.options.cellsPadding * 2) :
+                        table.options.cellsMaxWidth + (table.options.cellsPadding * 2);
 
-                        if (this.widthOfString(row[prop].toString()) <= table.options.cellsMaxWidth) {
-                            width = this.widthOfString(row[prop].toString()) + (table.options.cellsPadding * 2);
-                        } else {
-                            width = table.options.cellsMaxWidth + (table.options.cellsPadding * 2);
-                            rowheight = this.heightOfString(row[prop], {width: width}) + (table.options.cellsPadding * 2);
-                        }
+                    let rowheight = this.heightOfString(row[column.key], {
+                        width: width - (table.options.cellsPadding * 2),
+                        align: column.align || table.options.cellsAlign
+                    });
+
+                    maxRowheight = (maxRowheight < rowheight) ? rowheight : maxRowheight;
 
 
-                        if (maxRowheight < rowheight)
-                            maxRowheight = rowheight;
+                    table.rows[i]._rowHeight = maxRowheight + (table.options.cellsPadding * 2);
 
-                        if (column.width === undefined || column.width === null || column.width < width) {
-                            column.width = width;
-                        }
-                        break;
+                    if (column.width === undefined || column.width === null || column.width < width) {
+                        column.width = width;
                     }
                 }
 
                 this.font(table.options.cellsFont, table.options.cellsFontSize);
                 let width = this.widthOfString(column.label) + table.options.cellsPadding;
 
-                if (column.width < width)
-                    column.width = width;
+                column.width = (column.width < width) ? width : column.width;
 
                 table.columns[j] = column;
             }
-
-            table.rows[i].___pdfConstructTableRowHeight = maxRowheight + table.options.cellsPadding;
         }
+
+        table = (table.options.width === "fill_body") ? this.#fillParent(table) : table;
 
         return table;
     };
 
-    getColumnByKey(columns, key) {
-        for (let i = 0; i < columns.length; i++) {
+    #fillParent = (table) => {
 
-            if (columns[i].key === key)
-                return columns[i];
+        let tableWidth = 0;
+        let blanks = 0;
+        for (let i = 0; i < table.columns.length; i++) {
+            tableWidth += (table.columns[i].width - (table.options.cellsPadding * 2));
+            blanks += (table.options.cellsPadding * 2);
         }
-        return null;
+
+        let bodywidth = this.#width - blanks - table.options.marginLeft - table.options.marginRight;
+
+        if (tableWidth !== bodywidth) {
+
+
+            for (let i = 0; i < table.rows.length; i++) {
+
+                let maxRowheight = table.rows[i]._rowHeight - (table.options.cellsPadding * 2);
+                let row = table.rows[i];
+                for (let j = 0; j < table.columns.length; j++) {
+                    let column = table.columns[j];
+
+                    if (row.hasOwnProperty(column.key)) {
+
+                        this.font(table.options.cellsFont, table.options.cellsFontSize);
+
+                        if (i === 0)
+                            column.width = (((column.width - (table.options.cellsPadding * 2)) / tableWidth) * bodywidth) + (table.options.cellsPadding * 2);
+
+                        let rowheight = maxRowheight;
+                        rowheight = this.heightOfString(row[column.key]);
+
+                        maxRowheight = (maxRowheight < rowheight) ? rowheight : maxRowheight;
+                    }
+                    if (i === 0)
+                        table.columns[j] = column;
+                }
+
+                table.rows[i]._rowHeight = maxRowheight + (table.options.cellsPadding * 2);
+            }
+        }
+        return table;
     };
 
     #renderColumns = (table, x, y) => {
@@ -253,7 +294,7 @@ class PdfkitConstruct extends PDFDocument {
                 : this.widthOfString(table.columns[i].label, {align: table.options.headAlign});
 
             if (!table.columns[i].width || table.columns[i].width < headWidth) {
-                table.columns[i].width = headWidth + (table.options.cellsPadding);
+                table.columns[i].width = headWidth + (table.options.cellsPadding * 2);
             }
 
             let column = table.columns[i];
@@ -261,9 +302,8 @@ class PdfkitConstruct extends PDFDocument {
             this.lineJoin('miter')
                 .rect(x, y, column.width, height);
 
-            if (table.options.border != null)
-                this.fillAndStroke(table.options.headBackground, table.options.border.color);
-            else
+            (table.options.border != null) ?
+                this.fillAndStroke(table.options.headBackground, table.options.border.color) :
                 this.fill(table.options.headBackground);
 
             let tempx = x;
@@ -277,19 +317,16 @@ class PdfkitConstruct extends PDFDocument {
 
             let text_options = {
                 width: column.width,
-                height: table.options.headHeight,
                 align: table.options.headAlign
             };
 
-            this.text(column.label, tempx, y + 0.5 * (height - this.heightOfString(column.label, text_options)), text_options);
-            column.x = column.x ? column.x : x;
+            this.text(column.label, tempx, y + 0.5 * (height - this.heightOfString(column.label)), text_options);
+            column.x = column.x || x;
             x += column.width;
 
             if (!table.columns[i].hasOwnProperty("x"))
                 table.columns[i] = column;
         }
-
-        console.log(table.columns[0]);
 
         return table;
 
@@ -304,16 +341,10 @@ class PdfkitConstruct extends PDFDocument {
             this.header.render();
         }
 
-        if (this.footer.isVisible)
-            this.footer.render();
-
+        (this.footer.isVisible) && this.footer.render();
 
         for (let i = 0; i < this.tables.length; i++) {
 
-            /*if (y + this.tables[i].options.marginTop >= this.#bodyheight + this.#margin.bottom) {
-                this.addPageDoc();
-                y = this.#margin.top + (this.header.isVisible ? this.header.options.heightNumber : 0);
-            }*/
             x += this.tables[i].options.marginLeft;
             y = this.#renderTable(this.tables[i], x, y);
             x = this.#margin.left;
@@ -322,51 +353,49 @@ class PdfkitConstruct extends PDFDocument {
 
     #renderTable = (table, x, y) => {
 
-        y = this.#autoPageAddForTable(table, x, y, false);
-        y += table.options.marginTop;
-
         this.font(table.options.cellsFont, table.options.cellsFontSize);
         let colorindex = 0;
 
         for (let i = 0; i < table.rows.length; i++) {
-            let row = table.rows[i];
-            for (let prop in row) {
-                let column = this.getColumnByKey(table.columns, prop);
-                if (column) {
 
-                    if (table.options.striped || table.options.border != null) {
-
-                        this.lineJoin('miter')
-                            .rect(column.x, y, column.width, table.rows[i].___pdfConstructTableRowHeight);
-                    }
-
-                    if (table.options.striped && table.options.border != null) {
-                        this.fillAndStroke(table.options.stripedColors[colorindex], table.options.border.color);
-                    } else if (table.options.striped && table.options.border == null) {
-                        this.fill(table.options.stripedColors[colorindex]);
-                    } else if (!table.options.striped && table.options.border != null) {
-                        this.stroke(table.options.border.color);
-                    }
-
-
-                    let tempx = column.x;
-                    if (column.align === 'left')
-                        tempx = column.x + table.options.cellsPadding;
-                    else if (!column.align || column.align === 'center')
-                        tempx = column.x + table.options.cellsPadding / 2;
-
-                    this.fillColor(table.options.cellsColor);
-
-                    let text_options = {
-                        width: column.width - table.options.cellsPadding,
-                        align: column.align ? column.align : table.options.cellsAlign
-                    };
-                    this.text(row[prop], tempx, y + 0.5 * (table.rows[i].___pdfConstructTableRowHeight - this.heightOfString(row[prop], text_options)), text_options);
-
-                }
+            if (i === 0) {
+                y = this.#autoPageAddForTable(table, x, y, false);
             }
 
-            y += table.rows[i].___pdfConstructTableRowHeight;
+            let row = table.rows[i];
+
+            for (let j = 0; j < table.columns.length; j++) {
+                let column = table.columns[j];
+
+                if (table.options.striped || table.options.border != null) {
+
+                    this.rect(column.x, y, column.width, table.rows[i]._rowHeight);
+                }
+
+                if (table.options.striped && table.options.border != null) {
+                    this.fillAndStroke(table.options.stripedColors[colorindex], table.options.border.color);
+                } else if (table.options.striped && table.options.border == null) {
+                    this.fill(table.options.stripedColors[colorindex]);
+                } else if (!table.options.striped && table.options.border != null) {
+                    this.stroke(table.options.border.color);
+                }
+
+
+                let tempx = column.x;
+                if (!column.align || column.align === 'center' || column.align === 'left')
+                    tempx = column.x + table.options.cellsPadding;
+
+                this.fillColor(table.options.cellsColor);
+
+                let text_options = {
+                    width: column.width - ((column.align !== 'right') ? (table.options.cellsPadding * 2) : table.options.cellsPadding),
+                    align: column.align || table.options.cellsAlign
+                };
+                this.text(row[column.key], tempx, y + 0.5 * (table.rows[i]._rowHeight - this.heightOfString(row[column.key], text_options)), text_options);
+
+            }
+
+            y += table.rows[i]._rowHeight;
             colorindex = colorindex === 0 ? 1 : 0;
             if (i < table.rows.length - 1) {
                 y = this.#autoPageAddForTable(table, x, y, true);
@@ -376,9 +405,9 @@ class PdfkitConstruct extends PDFDocument {
         return y;
     };
 
-    #autoPageAddForTable = (table, x, y, checkEnd) => {
+    #autoPageAddForTable = (table, x, y, isLastRow) => {
 
-        if (checkEnd === true && y >= this.#bodyheight - this.#margin.bottom - table.options.marginBottom) {
+        if (isLastRow === true && y >= this.#bodyheight - this.#margin.bottom - table.options.marginBottom) {
 
             let height = table.options.headHeight + (table.options.cellsPadding * 2);
             this.addPageDoc();
@@ -386,7 +415,12 @@ class PdfkitConstruct extends PDFDocument {
             this.#renderColumns(table, x, y);
             y += height;
             this.font(table.options.cellsFont, table.options.cellsFontSize);
-        } else if (checkEnd === false) {
+        } else if (isLastRow === false) {
+
+            if (y + (table.rows[0]._rowHeight) >= this.#bodyheight - this.#margin.bottom - table.options.marginTop) {
+                this.addPageDoc();
+                y = this.#margin.top + (this.header.isVisible ? this.header.options.heightNumber : 0);
+            }
             let height = table.options.headHeight + (table.options.cellsPadding * 2);
             this.#renderColumns(table, x, y);
             y += height;
@@ -395,47 +429,59 @@ class PdfkitConstruct extends PDFDocument {
         return y;
     };
 
-    setPageNumbers(strTemplate = (current, count) => `${current} of ${count}`, position = "top" | "bottom" | "top right" | "top left" | "bottom right" | "bottom left") {
+    setPageNumbers(strTemplate = (current, count) => `${current} of ${count}`, position = "bottom", options = {}) {
         if (this.options.bufferPages) {
+
             let x, y;
+            let validPositions = ["top", "bottom", "right", "left"];
+            let pos = position.toString().split(" ");
 
-            switch (position) {
+            for (let i = 0; i < pos.length; i++) {
 
-                case "top":
-                    y = this.#margin.top / 2;
-                    x = this.page.width / 2;
-                    break;
-                case "top left":
-                    y = this.#margin.top / 2;
-                    x = this.#margin.left / 2;
-                    break;
-                case "top right":
-                    y = this.#margin.top / 2;
-                    x = this.#width;
-                    break;
-                case "bottom":
-                    y = this.#height;
-                    x = this.page.width / 2;
-                    break;
-                case "bottom left":
-                    y = this.#height;
-                    x = this.#margin.left;
-                    break;
-                case "bottom right":
-                default:
-                    y = this.#height;
-                    x = this.#width;
-                    break;
+                if (!validPositions.includes(pos[i]))
+                    throw new Error("Position given unknown ''" + pos[i] + "''");
 
+                switch (pos[i]) {
+
+                    case "top":
+                        y = this.#margin.top / 2;
+                        x = x || this.page.width / 2;
+                        break;
+                    case "bottom":
+                        y = this.page.height - this.#margin.bottom;
+                        x = x || this.page.width / 2;
+                        break;
+                    case "left":
+                        x = this.#margin.left;
+                        break;
+                    case "right":
+                        x = this.#width;
+                        break;
+                    default:
+                        throw new Error("Invalid position value ''" + pos[i] + "''");
+                }
             }
+
 
             let docRange = this.bufferedPageRange();
             // page numbers
             for (let i = docRange.start; i < docRange.count; i++) {
+
+                let str = strTemplate((i + 1), docRange.count);
+                let wstr = 0;
+
+                if (position.includes("right"))
+                    wstr = this.widthOfString(str, options);
+                else if (position.includes("left"))
+                    wstr = 0;
+                else
+                    wstr = this.widthOfString(str, options) / 2;
+
+
                 this.switchToPage(i);
                 this.fillColor('black');
                 this.font("Helvetica", 10)
-                    .text(strTemplate((i + 1), docRange.count), x, y, {lineBreak: false});
+                    .text(str, x - wstr, y, options);
             }
         } else
             throw new Error("document option bufferPages needs to be set to true. 'new PdfkitConstruct({ bufferPages: true })'");
